@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package drocm.registry;
+
+import "common.proto";
+
+option cc_generic_services = false;
+
+// ============================================================================
+// Registry Service Definitions
+// ============================================================================
+
+// Request to register a new node with the registry
+message RegisterRequest {
+  drocm.common.NodeInfo node_info = 1;  // Node metadata
+  float cpu_usage = 2;                  // Initial CPU usage percentage [0, 100]
+  float memory_usage = 3;               // Initial memory usage percentage [0, 100]
+}
+
+// Response from registry after node registration
+message RegisterResponse {
+  bool success = 1;              // Whether registration succeeded
+  string session_id = 2;         // Unique session ID for heartbeat
+  uint32 heartbeat_interval = 3; // Expected heartbeat interval in milliseconds
+  string error_message = 4;      // Error description if failed
+}
+
+// Heartbeat message sent periodically by nodes
+message HeartbeatRequest {
+  string node_id = 1;            // Node identifier
+  string session_id = 2;         // Session ID from registration
+  uint64 timestamp = 3;          // Unix timestamp in milliseconds
+  float cpu_usage = 4;           // Current CPU usage percentage [0, 100]
+  float memory_usage = 5;        // Current memory usage percentage [0, 100]
+  uint32 active_connections = 6; // Number of active gRPC connections
+}
+
+// Heartbeat response from registry
+message HeartbeatResponse {
+  bool success = 1;              // Whether heartbeat was accepted
+  uint32 missed_heartbeats = 2;  // Number of consecutive missed heartbeats
+  bool should_reconnect = 3;     // Whether node should re-register
+}
+
+// Request to gracefully deregister a node
+message DeregisterRequest {
+  string node_id = 1;            // Node identifier
+  string session_id = 2;         // Session ID from registration
+  string reason = 3;             // Reason for leaving (e.g., "shutdown", "error")
+}
+
+// Response from deregistration
+message DeregisterResponse {
+  bool success = 1;              // Whether deregistration succeeded
+  string message = 2;            // Acknowledgment message
+}
+
+// Query all registered nodes
+message DiscoverRequest {
+  repeated string service_filter = 1;  // Filter by service names (empty = all)
+}
+
+// Response with list of matching nodes
+message DiscoverResponse {
+  repeated drocm.common.NodeInfo nodes = 1;  // Matching node list
+}
+
+// ============================================================================
+// Registry Service Definition
+// ============================================================================
+
+service RegistryService {
+  // Register a new node with the registry
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // Send periodic heartbeats to maintain registration
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // Gracefully deregister a node
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+  
+  // Discover nodes providing specific services
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse);
+}

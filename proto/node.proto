@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package drocm.node;
+
+import "common.proto";
+
+option cc_generic_services = false;
+
+// ============================================================================
+// Node-to-Node Communication Service Definitions
+// ============================================================================
+
+// Request to get node status
+// Used for unary RPC status checks
+message GetStatusRequest {
+  string requester_id = 1;  // ID of the requesting node
+  uint64 timestamp = 2;     // Request timestamp in milliseconds
+}
+
+// Response containing current node status
+message GetStatusResponse {
+  drocm.common.RobotStatus status = 1;  // Current robot status
+  uint64 response_time = 2;             // Response timestamp in milliseconds
+}
+
+// Subscribe to topic stream
+// Used for server streaming (e.g., sensor data)
+message SubscribeRequest {
+  string subscriber_id = 1;   // ID of the subscribing node
+  string topic = 2;           // Topic to subscribe to (e.g., "lidar", "pose")
+  uint32 qos = 3;             // Quality of service level (0=best effort, 1=reliable)
+}
+
+// Streamed topic data
+message TopicData {
+  string topic = 1;                // Topic name
+  uint64 timestamp = 2;            // Data timestamp in milliseconds
+  bytes payload = 3;               // Serialized payload (interpret based on topic)
+  string payload_type = 4;         // Payload type identifier (e.g., "sensor_msgs/LaserScan")
+}
+
+// Bidirectional stream for real-time control
+// Used for closed-loop control (e.g., teleoperation)
+message ControlStreamRequest {
+  string controller_id = 1;        // ID of the controlling node
+  string session_id = 2;           // Control session identifier
+  drocm.common.RobotCommand command = 3;  // Control command
+}
+
+// Response from control stream
+message ControlStreamResponse {
+  string session_id = 1;           // Echo of session ID
+  drocm.common.CommandResult result = 2;  // Command execution result
+}
+
+// ============================================================================
+// Node Communication Service Definition
+// ============================================================================
+
+service NodeService {
+  // Get current node status (unary RPC)
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  
+  // Subscribe to a topic stream (server streaming)
+  // Used for high-frequency sensor data
+  rpc Subscribe(SubscribeRequest) returns (stream TopicData);
+  
+  // Bidirectional control stream (bidirectional streaming)
+  // Used for real-time remote control with closed-loop feedback
+  rpc ControlStream(stream ControlStreamRequest) returns (stream ControlStreamResponse);
+  
+  // Publish data to a topic (unary, for low-frequency commands)
+  rpc Publish(TopicData) returns (GetStatusResponse);
+}

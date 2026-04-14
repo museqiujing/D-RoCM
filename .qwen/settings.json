@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(cmake *)",
+      "Bash(pkg-config *)",
+      "Bash(ls *)",
+      "Bash(dpkg *)",
+      "Bash(grep *)",
+      "Bash(chmod *)",
+      "Bash(sudo *)",
+      "Bash(make *)",
+      "Bash(./drocm)",
+      "Bash(cat *)",
+      "Bash(int *)",
+      "Bash(spdlog::info)",
+      "Bash(std::string *)",
+      "Bash(return *)",
+      "Bash(})",
+      "Bash(eof)",
+      "Bash(g++ *)",
+      "Bash(/tmp/test_spdlog)",
+      "Bash(find *)",
+      "Bash(std::cout)",
+      "Bash(/tmp/test_fmt_project)",
+      "Bash(strings *)",
+      "Bash(echo *)",
+      "Bash(/tmp/test_jthread)",
+      "Bash(tail *)",
+      "Bash(sed *)"
+    ]
+  },
+  "$version": 3
+}

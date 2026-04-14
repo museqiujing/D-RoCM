@@ -1,0 +1,67 @@
+{
+    "cmake.configureOnOpen": true,
+    "cmake.configureArgs": [
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DDROCM_BUILD_TESTS=ON",
+        "-DDROCM_BUILD_BENCHMARK=ON",
+        "-DDROCM_BUILD_EXAMPLES=ON"
+    ],
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.exportCompileCommandsFile": true,
+    "cmake.defaultVariants": {
+        "buildType": {
+            "default": "debug",
+            "description": "The build type.",
+            "choices": {
+                "debug": {
+                    "short": "Debug",
+                    "long": "Disable optimizations and include debug information.",
+                    "buildType": "Debug",
+                    "settings": {
+                        "CMAKE_CXX_FLAGS_DEBUG": "-g -O0 -DDEBUG"
+                    }
+                },
+                "release": {
+                    "short": "Release",
+                    "long": "Optimize for speed.",
+                    "buildType": "Release",
+                    "settings": {
+                        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG -march=native"
+                    }
+                },
+                "relwithdebinfo": {
+                    "short": "RelWithDebInfo",
+                    "long": "Optimize for speed and include debug information.",
+                    "buildType": "RelWithDebInfo",
+                    "settings": {
+                        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG"
+                    }
+                }
+            }
+        }
+    },
+    "cmake.buildBeforeRun": true,
+    "cmake.clearOutputBeforeBuild": true,
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.enhancedColorization": "enabled",
+    "C_Cpp.formatting": "vcFormat",
+    "C_Cpp.vcFormat.newLine.closeBraceSameLine.emptyFunction": true,
+    "C_Cpp.vcFormat.newLine.closeBraceSameLine.emptyType": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/build": false
+    },
+    "search.exclude": {
+        "**/build": true,
+        "**/*.pb.cc": true,
+        "**/*.pb.h": true,
+        "**/*.grpc.pb.cc": true,
+        "**/*.grpc.pb.h": true
+    }
+}

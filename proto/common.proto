@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package drocm.common;
+
+option cc_generic_services = false;
+
+// ============================================================================
+// Common Data Structures for Robot Control
+// ============================================================================
+
+// 3D Vector representation
+// Coordinate system: Right-handed, X-forward, Y-left, Z-up
+// Units: meters (m)
+message Vector3 {
+  double x = 1;  // X component in meters
+  double y = 2;  // Y component in meters
+  double z = 3;  // Z component in meters
+}
+
+// Robot pose in 2D plane
+// Coordinate system: X-forward, Y-left, theta counter-clockwise from X axis
+// Units: position in meters (m), orientation in radians (rad)
+message Pose2D {
+  double x = 1;     // X position in meters
+  double y = 2;     // Y position in meters
+  double theta = 3; // Orientation angle in radians [-π, π]
+}
+
+// Robot pose in 3D space
+// Coordinate system: Right-handed, base_link frame
+// Units: position in meters (m), orientation as quaternion
+message Pose3D {
+  Vector3 position = 1;          // Position in meters
+  double orientation_w = 2;      // Quaternion W component
+  double orientation_x = 3;      // Quaternion X component
+  double orientation_y = 4;      // Quaternion Y component
+  double orientation_z = 5;      // Quaternion Z component
+}
+
+// Node metadata for service discovery
+message NodeInfo {
+  string node_id = 1;            // Unique node identifier (e.g., "lidar_01")
+  string ip_address = 2;         // Node IP address for P2P communication
+  uint32 port = 3;               // gRPC server port
+  repeated string services = 4;  // List of services provided by this node
+  uint64 startup_timestamp = 5;  // Unix timestamp when node started (milliseconds)
+}
+
+// Robot real-time status
+// Used for high-frequency status reporting (e.g., 100Hz+)
+message RobotStatus {
+  uint64 timestamp = 1;        // Unix timestamp in milliseconds
+  Pose2D pose = 2;             // Current robot pose
+  float battery_level = 3;     // Battery level percentage [0.0, 100.0]
+  float velocity_linear = 4;   // Linear velocity in m/s
+  float velocity_angular = 5;  // Angular velocity in rad/s
+  bool is_emergency = 6;       // Emergency stop flag
+  uint32 error_code = 7;       // Error code (0 = no error)
+}
+
+// Robot command for control
+// Used for sending control commands to robot
+message RobotCommand {
+  uint64 timestamp = 1;        // Command timestamp in milliseconds
+  string command_id = 2;       // Unique command identifier
+  
+  oneof command_type {
+    VelocityCommand velocity = 10;   // Velocity control
+    PoseCommand pose_target = 11;    // Target pose navigation
+    StopCommand stop = 12;           // Immediate stop
+  }
+}
+
+// Velocity command
+// Units: linear in m/s, angular in rad/s
+message VelocityCommand {
+  float linear_velocity = 1;   // Target linear velocity in m/s
+  float angular_velocity = 2;  // Target angular velocity in rad/s
+}
+
+// Pose target command
+message PoseCommand {
+  Pose2D target_pose = 1;      // Target pose to navigate to
+  float max_velocity = 2;      // Maximum allowed velocity in m/s
+  float tolerance = 3;         // Acceptable position tolerance in meters
+}
+
+// Stop command
+message StopCommand {
+  bool emergency = 1;          // If true, trigger emergency stop
+}
+
+// Command execution result
+message CommandResult {
+  string command_id = 1;       // Echo of the original command ID
+  bool success = 2;            // Whether command executed successfully
+  string error_message = 3;    // Error description if failed
+  uint64 execution_time = 4;   // Execution time in milliseconds
+}
