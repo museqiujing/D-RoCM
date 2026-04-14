@@ -32,4 +32,21 @@ message RobotStatus {
 }
 5. 关键技术点攻坚 (Key Technical Points)5.1 gRPC 异步模型与 C++20 协程的整合这是本项目的技术护城河。问题：gRPC 原生异步 API 使用 CompletionQueue 和 void* tag，会导致极其复杂的“状态机”代码。对策：开发一个 CoroHandler，将 Tag 映射为 std::coroutine_handle。当 CompletionQueue 收到事件时，通过 tag 唤醒（Resume）对应的协程。代码示意：C++// 目标实现效果
 auto response = co_await node_stub.SendCommand(cmd); 
-5.2 零拷贝与内存管理Arena Allocation：利用 Protobuf 的 Arena 技术，在处理高频 RobotStatus 消息时，避免频繁的堆内存分配。String View：在内部路由逻辑中，尽可能使用 std::string_view 传递节点 ID。5.3 智能重连机制实现一个基于 指数退避算法 (Exponential Backoff) 的重连器。当监听到 gRPC Channel 状态变为 TRANSIENT_FAILURE 时，触发异步重连协程，避免阻塞主逻辑。5.4 高效心跳监测Master 节点不使用轮询，而是使用 时间轮 (Time Wheel) 算法 或 Boost.Asio 定时器管理成百上千个节点的心跳。心跳包附带负载信息（CPU/MEM），为后续简单的负载均衡做准备。6. 实现计划 (Implementation Plan)里程碑 1 (基础流转)：完成 Proto 定义，实现基本的 Master 注册机制（Unary RPC）。里程碑 2 (协程封装)：重点攻克 CompletionQueue 与协程的适配层，实现非阻塞的 co_await 调用。里程碑 3 (双向流交互)：实现远程遥控的 Bidirectional Streaming，并进行丢包模拟测试。里程碑 4 (性能调优)：使用 perf 定位瓶颈，优化序列化开销，完成 ghz 压测报告。
+5.2 零拷贝与内存管理Arena Allocation：利用 Protobuf 的 Arena 技术，在处理高频 RobotStatus 消息时，避免频繁的堆内存分配。String View：在内部路由逻辑中，尽可能使用 std::string_view 传递节点 ID。5.3 智能重连机制实现一个基于 指数退避算法 (Exponential Backoff) 的重连器。当监听到 gRPC Channel 状态变为 TRANSIENT_FAILURE 时，触发异步重连协程，避免阻塞主逻辑。5.4 高效心跳监测Master 节点不使用轮询，而是使用 时间轮 (Time Wheel) 算法 或 Boost.Asio 定时器管理成百上千个节点的心跳。心跳包附带负载信息（CPU/MEM），为后续简单的负载均衡做准备。
+
+### 5.5 动态寻址与服务发现逻辑
+为了实现 P2P 通讯的去中心化管理，Subscriber 节点的连接逻辑如下：
+1. **逻辑寻址**：Subscriber 启动时仅持有服务标识符（如 "lidar_stream"）。
+2. **查询寻址**：通过协程调用 `Registry.Discover(service_name)`。
+3. **物理连接**：Registry 返回当前最健康的 NodeInfo（IP:Port），Subscriber 建立 P2P gRPC Channel。
+4. **失效重定向**：若 P2P 连接断开且重试失败，Subscriber 必须重新发起 Discover，以应对 Node 重启后物理地址变更的情况。
+
+
+
+### 5.6 基于 Arena 的零拷贝内存模型
+针对 `RobotStatus` 或 `LidarScan` 等高频消息：
+- **问题**：标准 Protobuf 序列化在每次发送时都会在堆上频繁分配/释放小内存块，导致内存碎片。
+- **方案**：在服务端维持一个线程局部的 `google::protobuf::Arena` 对象。
+- **效果**：所有消息字段的分配都在连续内存块中进行，发送完成后统一重置偏移量，分配开销趋近于 O(1)。
+
+6. 实现计划 (Implementation Plan)里程碑 1 (基础流转)：完成 Proto 定义，实现基本的 Master 注册机制（Unary RPC）。里程碑 2 (协程封装)：重点攻克 CompletionQueue 与协程的适配层，实现非阻塞的 co_await 调用。里程碑 3 (双向流交互)：实现远程遥控的 Bidirectional Streaming，并进行丢包模拟测试。里程碑 4 (性能调优)：使用 perf 定位瓶颈，优化序列化开销，完成 ghz 压测报告。

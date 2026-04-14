@@ -2,20 +2,18 @@
 
 #include <memory>
 #include <chrono>
-
-#ifdef PROMETHEUS_CPP_FOUND
-#include <prometheus/counter.h>
-#include <prometheus/histogram.h>
-#include <prometheus/registry.h>
-#endif
+#include <atomic>
+#include <string>
+#include <mutex>
+#include <unordered_map>
 
 namespace drocm::utils {
 
     /**
-     * @brief Metrics collector for D-RoCM observability
+     * @brief Lightweight metrics collector for D-RoCM observability
      *
-     * Wraps prometheus-cpp if available, otherwise acts as a stub.
-     * Thread-safe and low-overhead.
+     * Thread-safe counter-based metrics with simple HTTP exposure.
+     * No external dependencies required.
      */
     class Metrics {
     public:
@@ -26,9 +24,12 @@ namespace drocm::utils {
         void record_rpc_latency_us(double us);
         void increment_heartbeat_miss();
 
-#ifdef PROMETHEUS_CPP_FOUND
-        std::shared_ptr<::prometheus::Registry> get_registry() const;
-#endif
+        // Streaming metrics (Phase 3.3)
+        void increment_messages_sent();
+        void record_stream_latency_ms(double ms);
+
+        // Get metrics as Prometheus text format
+        std::string get_prometheus_text() const;
 
     private:
         Metrics();
@@ -36,15 +37,16 @@ namespace drocm::utils {
         Metrics(const Metrics&) = delete;
         Metrics& operator=(const Metrics&) = delete;
 
-#ifdef PROMETHEUS_CPP_FOUND
-        std::shared_ptr<::prometheus::Registry> registry_;
-        ::prometheus::Family<::prometheus::Counter>* node_count_family_;
-        ::prometheus::Counter* nodes_online_;
-        ::prometheus::Family<::prometheus::Counter>* heartbeat_miss_family_;
-        ::prometheus::Counter* heartbeat_miss_total_;
-        ::prometheus::Family<::prometheus::Histogram>* rpc_latency_family_;
-        ::prometheus::Histogram* rpc_latency_us_;
-#endif
+        mutable std::mutex mutex_;
+        std::atomic<int64_t> nodes_online_{ 0 };
+        std::atomic<int64_t> heartbeat_miss_total_{ 0 };
+        std::atomic<int64_t> messages_sent_total_{ 0 };
+
+        // Simple latency accumulators for averages
+        std::atomic<int64_t> rpc_latency_sum_us_{ 0 };
+        std::atomic<int64_t> rpc_latency_count_{ 0 };
+        std::atomic<int64_t> stream_latency_sum_ms_{ 0 };
+        std::atomic<int64_t> stream_latency_count_{ 0 };
     };
 
     // RAII timer for RPC latency

@@ -28,7 +28,14 @@
       "Bash(echo *)",
       "Bash(/tmp/test_jthread)",
       "Bash(tail *)",
-      "Bash(sed *)"
+      "Bash(sed *)",
+      "Bash(./build/registry_server)",
+      "Bash(sleep *)",
+      "Bash(./build/lidar_emulator)",
+      "Bash(pkill *)",
+      "Bash(curl *)",
+      "Bash(grpcurl *)",
+      "Bash(kill *)"
     ]
   },
   "$version": 3

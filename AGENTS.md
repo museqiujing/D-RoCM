@@ -40,10 +40,14 @@ D-RoCM 是一个基于 C++20 和 gRPC 的高性能机器人通讯中间件。
 
 Arena 分配：在处理高频 Protobuf 序列化时，必须体现 google::protobuf::Arena 的使用，以减少堆分配。
 
+Arena 规范：在高频 RPC 处理中，google::protobuf::Arena 实例必须是局部变量或与 RPC 生命周期绑定的成员。严禁将 Arena 分配的对象传递到 Arena 生命周期之外。
+
 3.3 错误处理
 禁止使用异常 (exceptions)，除非是在无法避免的构造函数中。
 
 使用 std::expected (或类似的 Result 类型) 或返回 grpc::Status 来处理业务逻辑错误。
+
+发现自愈逻辑：当 NodeClient 遇到 UNAVAILABLE 或 DEADLINE_EXCEEDED 错误时，禁止盲目重试物理 IP。必须触发一次 Registry::Discover 流程以校验目标节点的物理地址是否发生漂移。
 
 4. 关键技术点实现指引
 4.1 协议定义 (Protobuf)
@@ -89,6 +93,8 @@ Check Observability：是否在关键路径上加入了性能埋点代码？
 3. 最后释放：数据容器（NodeTable）和基础组件（Logger）
 
 [红线] RegistryService 必须显式调用 Shutdown() 方法，不能完全依赖析构函数。
+
+[红线] 客户端连接一致性：NodeClient 内部的 grpc::Channel 切换必须是原子的。在更新物理连接地址时，必须先 Shutdown 旧连接的所有活跃流，确保不会出现多个连接同时向同一个逻辑服务名发送指令的情况。
 
 最后修改日期：2026-04-14
 版本：v1.1.0

@@ -97,13 +97,22 @@ namespace drocm::registry {
             candidates.push_back(entry);
         }
 
-        if (service_filter.empty()) {
-            return candidates;
-        }
-
         // Filter outside the lock — no Protobuf serialization under lock
+        // Key: Only return healthy nodes (missed_heartbeats == 0)
+        // A node with missed_heartbeats > 0 is considered unhealthy by HealthChecker
         std::vector<NodeEntry> result;
         for (const auto& entry : candidates) {
+            // Skip unhealthy nodes
+            if (entry.missed_heartbeats > 0) {
+                continue;
+            }
+
+            if (service_filter.empty()) {
+                result.push_back(entry);
+                continue;
+            }
+
+            // Filter by service names
             for (int i = 0; i < entry.info.services_size(); ++i) {
                 const auto& svc = entry.info.services(i);
                 if (std::find(service_filter.begin(), service_filter.end(), svc)

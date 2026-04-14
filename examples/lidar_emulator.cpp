@@ -15,11 +15,16 @@
 #include <memory>
 #include <atomic>
 #include <signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <cstring>
 
 #include <grpcpp/grpcpp.h>
 #include <google/protobuf/arena.h>
 
 #include "utils/logger.h"
+#include "utils/metrics.h"
 #include "node.grpc.pb.h"
 #include "registry.grpc.pb.h"
 
@@ -55,21 +60,58 @@ public:
 
         DROCM_LOG_INFO("[LIDAR] Client subscribed to: {}", request->topic());
 
-        for (int i = 0; i < 10 && !false; ++i) {
-            google::protobuf::Arena arena;
-            auto* data = google::protobuf::Arena::CreateMessage<drocm::node::TopicData>(&arena);
+        // [关键点 1] Arena 定义在循环外
+        // 生命周期覆盖整个 Subscribe，函数退出时一次性释放所有内存
+        google::protobuf::Arena arena;
+
+        // [关键点 2] 对象预分配：在循环外创建复用对象
+        // 使用 Arena 分配，确保其生命周期受 Arena 管理
+        auto* data = google::protobuf::Arena::CreateMessage<drocm::node::TopicData>(&arena);
+
+        constexpr int kMaxBackpressureRetries = 3;
+        int consecutive_failures = 0;
+
+        // 模拟传感器持续数据流 — 非阻塞背压模式
+        for (int i = 0; g_running.load(); ++i) {
+            // [关键点 3] 对象复用而非重刷 Arena
+            // Clear() 会保留 Protobuf 内部已分配的缓冲区（如 string 的 buffer），
+            // 从而避免了下一帧赋值时的重新分配。
+            data->Clear();
+
+            // 填充数据
             data->set_topic(request->topic());
             data->set_timestamp(std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count());
             data->set_payload_type("RobotStatus");
+
+            // 模拟复杂载荷（生产环境下建议使用固定缓冲区减少 std::string 分配）
             data->set_payload("{\"x\":" + std::to_string(i * 0.5) + ",\"y\":" + std::to_string(i * 0.3) + "}");
 
+            // [关键点 4] 非阻塞背压：根据 Write 返回值动态调整
+            // 不再使用固定 sleep，而是依赖底层流状态反馈
             if (!writer->Write(*data)) {
-                DROCM_LOG_WARN("[LIDAR] Backpressure: client too slow");
-                break;
+                // Write 返回 false：底层缓冲区已满，客户端跟不上
+                consecutive_failures++;
+                if (consecutive_failures >= kMaxBackpressureRetries) {
+                    DROCM_LOG_WARN("[LIDAR] Connection dropped due to backpressure ({} consecutive failures)",
+                        consecutive_failures);
+                    break;
+                }
+                // 指数退避：10ms → 20ms → 40ms（快速重试，避免锁死线程）
+                auto backoff = std::chrono::milliseconds(10 << (consecutive_failures - 1));
+                DROCM_LOG_DEBUG("[LIDAR] Backpressure detected, backing off {}ms (retry {}/{})",
+                    backoff.count(), consecutive_failures, kMaxBackpressureRetries);
+                std::this_thread::sleep_for(backoff);
+                continue;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            // Write 成功：重置失败计数器
+            consecutive_failures = 0;
+
+            // 指标埋点
+            drocm::utils::Metrics::instance().increment_messages_sent();
         }
+
         return grpc::Status::OK;
     }
 
@@ -231,6 +273,58 @@ int main() {
     auto node_server = builder.BuildAndStart();
     DROCM_LOG_INFO("[LIDAR] Node server listening on 0.0.0.0:50052");
 
+    // 1.5 启动轻量级 Prometheus Metrics HTTP 端 (Port 9090)
+    // 使用简单的 socket 实现，无需外部依赖
+    std::thread metrics_thread([]() {
+        int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd < 0) return;
+
+        int opt = 1;
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = INADDR_ANY;
+        address.sin_port = htons(9090);
+
+        if (bind(server_fd, (sockaddr*)&address, sizeof(address)) < 0) {
+            DROCM_LOG_WARN("[LIDAR] Failed to bind metrics port 9090");
+            close(server_fd);
+            return;
+        }
+
+        if (listen(server_fd, 3) < 0) {
+            close(server_fd);
+            return;
+        }
+
+        DROCM_LOG_INFO("[LIDAR] Prometheus metrics exposed at http://localhost:9090/metrics");
+
+        while (g_running.load()) {
+            sockaddr_in client_addr{};
+            socklen_t client_len = sizeof(client_addr);
+            int client_fd = accept(server_fd, (sockaddr*)&client_addr, &client_len);
+            if (client_fd < 0) continue;
+
+            // Read request (ignore)
+            char buf[1024];
+            read(client_fd, buf, sizeof(buf));
+
+            // Send Prometheus format response
+            std::string body = drocm::utils::Metrics::instance().get_prometheus_text();
+            std::string response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain; version=0.0.4; charset=utf-8\r\n"
+                "Content-Length: " + std::to_string(body.size()) + "\r\n"
+                "Connection: close\r\n\r\n" + body;
+
+            write(client_fd, response.c_str(), response.size());
+            close(client_fd);
+        }
+
+        close(server_fd);
+        });
+
     // 2. 向远端 Registry 注册 (仅尝试一次，失败则进入自愈循环)
     constexpr int kNodePort = 50052;
     std::string session_id = "pending";
@@ -264,6 +358,11 @@ int main() {
     heartbeat_running.store(false);
     if (heartbeat_thread.joinable()) {
         heartbeat_thread.join();
+    }
+
+    // 5.2.5 等待 metrics 线程退出 (g_running = false 会触发)
+    if (metrics_thread.joinable()) {
+        metrics_thread.join();
     }
 
     // 5.3 等待 Server 完全退出

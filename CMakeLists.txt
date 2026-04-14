@@ -61,6 +61,12 @@ if(NOT GRPC_CPP_PLUGIN_EXECUTABLE)
 endif()
 
 find_package(prometheus-cpp CONFIG QUIET)
+if(prometheus-cpp_FOUND)
+  message(STATUS "Found prometheus-cpp: ${prometheus-cpp_DIR}")
+  add_compile_definitions(PROMETHEUS_CPP_PULL_FOUND=1)
+else()
+  message(STATUS "prometheus-cpp NOT found - metrics will be stubs")
+endif()
 
 # ============================================================
 # Shared compile options
